@@ -1,0 +1,71 @@
+name: Build official-source CleanYourTV v2.5.0 APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android TV launcher APK from official v2.5.0 source
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout upstream tag v2.5.0 (not fork contents)
+        uses: actions/checkout@v4
+        with:
+          repository: Gathin23/cleanyourtv
+          ref: v2.5.0
+          persist-credentials: false
+
+      - name: Verify official release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Source URL: https://github.com/Gathin23/cleanyourtv"
+          echo "Source tag: v2.5.0"
+          git show -s --format='%H %s' HEAD
+          [[ "$(git rev-parse HEAD)" == 9071ec8* ]] || { echo 'Wrong source commit; refusing to build'; exit 1; }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK 34
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build launcher release APK
+        working-directory: launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain :app:assembleRelease
+
+      - name: Verify APK structure and produce SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=launcher/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -1
+          sha256sum "$APK" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -lh "$APK"
+
+      - name: Downloadable build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanYourTV-v2.5.0-9071ec8-APK
+          path: |
+            launcher/app/build/outputs/apk/release/app-release.apk
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
